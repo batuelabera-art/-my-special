@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Only for Nani</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; cursor: crosshair; }
+        #overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #1a0005 0%, #000 100%);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1000; transition: opacity 2s ease, visibility 2s;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1); padding: 50px; border-radius: 30px;
+            text-align: center; box-shadow: 0 0 60px rgba(255, 0, 68, 0.2); color: white;
+        }
+        .start-btn {
+            background: linear-gradient(45deg, #ff0044, #ff88aa); color: white; border: none;
+            padding: 18px 50px; font-size: 1.3rem; font-weight: bold; border-radius: 50px;
+            cursor: pointer; transition: 0.3s; box-shadow: 0 10px 25px rgba(255, 0, 68, 0.4);
+        }
+        .start-btn:hover { transform: scale(1.1); box-shadow: 0 15px 35px rgba(255, 0, 68, 0.6); }
+        .hidden { opacity: 0; visibility: hidden; }
+    </style>
+</head>
+<body>
+
+<div id="overlay">
+    <div class="card">
+        <h1>ይቅርታ ካደረግሽልኝ ንኪው/h      <p>I Love You</p>
+        <button class="start-btn" id="startBtn">Start the Journey</button>
+    </div>
+</div>
+
+<audio id="bgMusic" loop crossorigin="anonymous">
+    <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+</audio>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    let analyzer, dataArray;
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 30000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    camera.position.set(7500, 7500, 7500); 
+    controls.enableDamping = true;
+    controls.enabled = false;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    const interactables = [];
+
+    // 1. THE GIANT STAR CUBE
+    const starGeo = new THREE.BufferGeometry();
+    const starVerts = [];
+    for (let i = 0; i < 150000; i++) {
+        starVerts.push((Math.random() - 0.5) * 6000, (Math.random() - 0.5) * 6000, (Math.random() - 0.5) * 6000);
+    }
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
+    const starCube = new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.8, color: 0xffffff, transparent: true, opacity: 0.7 }));
+    scene.add(starCube);
+
+    // 2. BIG SOLID HEART SUN
+    const heartPoints = [];
+    const scaleFactor = 2.8; 
+    for (let i = 0; i < 90000; i++) {
+        const t = Math.random() * Math.PI * 2;
+        const r = Math.pow(Math.random(), 0.6); 
+        let x = 16 * Math.pow(Math.sin(t), 3);
+        let y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+        heartPoints.push(new THREE.Vector3(x * r * scaleFactor, y * r * scaleFactor, (Math.random() - 0.5) * 30));
+    }
+    const sun = new THREE.Points(new THREE.BufferGeometry().setFromPoints(heartPoints), new THREE.PointsMaterial({ color: 0xff0044, size: 0.35, blending: THREE.AdditiveBlending }));
+    scene.add(sun);
+
+    // 3. SHOOTING STARS
+    const shootingStars = [];
+    function createShootingStar() {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 80), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true }));
+        const start = new THREE.Vector3((Math.random()-0.5)*5000, (Math.random()-0.5)*5000, (Math.random()-0.5)*5000);
+        mesh.position.copy(start);
+        mesh.lookAt(new THREE.Vector3(0,0,0));
+        scene.add(mesh);
+        shootingStars.push({ mesh, t: 0, speed: 0.02 + Math.random()*0.02 });
+    }
+
+    // 4. ORBITS
+    const orbitSystems = [];
+    const messages = ["ዘላቂ ፍቅር", "ብሩህ ተስፋ", "ንጹህ ልብ", "የነፍስ ጓደኛ", "አብሮነት", "ፍጹም ሰላም", "ደስታ", "መተሳሰብ"];
+    const imageFiles = ['a.jpg', 'b.jpg', 'c.jpg', 'd.jpg', 'e.jpg', 'f.jpg'];
+
+    function addFullOrbit(radius, speed, itemCount, type, msgOffset = 0) {
+        const group = new THREE.Group();
+        const orbitStarPoints = [];
+        for (let i = 0; i < 15000; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const r = radius + (Math.random() - 0.5) * 40;
+            orbitStarPoints.push(new THREE.Vector3(Math.cos(angle) * r, (Math.random() - 0.5) * 10, Math.sin(angle) * r));
+        }
+        group.add(new THREE.Points(new THREE.BufferGeometry().setFromPoints(orbitStarPoints), new THREE.PointsMaterial({ color: 0xffffff, size: 0.22, transparent: true, opacity: 0.4 })));
+
+        for (let i = 0; i < itemCount; i++) {
+            const angle = (i / itemCount) * Math.PI * 2;
+            const x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
+            let mesh;
+            if (type === 'text') {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = 1024; canvas.height = 256;
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.shadowColor = 'white'; ctx.shadowBlur = 40;
+                ctx.font = 'Bold 90px Arial'; ctx.fillStyle = 'white';
+                ctx.fillText(messages[(i + msgOffset) % messages.length], 512, 128);
+                mesh = new THREE.Mesh(new THREE.PlaneGeometry(100, 25), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false }));
+            } else {
+                const tex = new THREE.TextureLoader().load(imageFiles[i % imageFiles.length]);
+                mesh = new THREE.Mesh(new THREE.PlaneGeometry(35, 35), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, transparent: true, opacity: 0.9, depthWrite: false }));
+            }
+            mesh.position.set(x, 0, z);
+            mesh.userData = { targetScale: 1, isBig: false };
+            interactables.push(mesh);
+            group.add(mesh);
+        }
+        scene.add(group);
+        orbitSystems.push({ group, speed });
+    }
+
+    addFullOrbit(300, 0.002, 4, 'text', 0);   
+    addFullOrbit(480, 0.001, 6, 'image');    
+    addFullOrbit(650, 0.0006, 4, 'text', 4);  
+
+    // 5. JOURNEY LOGIC
+    let isStarted = false;
+    let autoZoom = false;
+    let cubeShowcase = false;
+    const finalCameraPos = new THREE.Vector3(0, 400, 850);
+
+    document.getElementById('startBtn').addEventListener('click', () => {
+        if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+        document.getElementById('overlay').classList.add('hidden');
+        const music = document.getElementById('bgMusic');
+        music.play();
+        
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createMediaElementSource(music);
+        analyzer = audioCtx.createAnalyser();
+        src.connect(analyzer); analyzer.connect(audioCtx.destination);
+        dataArray = new Uint8Array(analyzer.frequencyBinCount);
+
+        isStarted = true;
+        cubeShowcase = true;
+
+        setTimeout(() => {
+            cubeShowcase = false;
+            autoZoom = true;
+        }, 4000); 
+    });
+
+    // FIXED: CLICK INTERACTION RE-ADDED
+    window.addEventListener('click', (event) => {
+        if (!isStarted) return;
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(interactables);
+        if (intersects.length > 0) {
+            const obj = intersects[0].object;
+            obj.userData.isBig = !obj.userData.isBig;
+            obj.userData.targetScale = obj.userData.isBig ? 4 : 1;
+        }
+    });
+
+    window.addEventListener('mousedown', () => { 
+        if(isStarted) { 
+            autoZoom = false; 
+            cubeShowcase = false;
+            controls.enabled = true; 
+        } 
+    });
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const time = performance.now() * 0.001;
+
+        let volume = 0;
+        if (analyzer) {
+            analyzer.getByteFrequencyData(dataArray);
+            volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        }
+
+        sun.scale.set(1 + Math.sin(time * 2) * 0.07 + (volume/200), 1 + Math.sin(time * 2) * 0.07 + (volume/200), 1 + Math.sin(time * 2) * 0.07 + (volume/200));
+        sun.rotation.y += 0.003;
+        starCube.rotation.y += 0.0003;
+
+        if (Math.random() < 0.02) createShootingStar();
+        shootingStars.forEach((s, i) => {
+            s.t += s.speed;
+            s.mesh.position.multiplyScalar(0.98);
+            s.mesh.material.opacity = 1 - s.t;
+            if (s.t >= 1) { scene.remove(s.mesh); shootingStars.splice(i, 1); }
+        });
+
+        if (isStarted) {
+            if (cubeShowcase) {
+                camera.position.x = 7500 * Math.cos(time * 0.15);
+                camera.position.z = 7500 * Math.sin(time * 0.15);
+                camera.lookAt(0, 0, 0);
+            }
+            if (autoZoom) {
+                camera.position.lerp(finalCameraPos, 0.015);
+                camera.lookAt(0, 0, 0);
+                if (camera.position.distanceTo(finalCameraPos) < 20) { 
+                    autoZoom = false; 
+                    controls.enabled = true; 
+                }
+            }
+            orbitSystems.forEach(orb => orb.group.rotation.y += orb.speed * (1 + volume/100));
+        }
+
+        interactables.forEach(item => {
+            item.scale.lerp(new THREE.Vector3(item.userData.targetScale, item.userData.targetScale, item.userData.targetScale), 0.1);
+            item.lookAt(camera.position);
+        });
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+</script>
+</body>
+</html>
